@@ -2,8 +2,10 @@
 
 import * as React from "react"
 import { useChat } from "@ai-sdk/react"
+import { doesBrowserSupportTransformersJS } from "@browser-ai/transformers-js"
 import { lastAssistantMessageIsCompleteWithToolCalls } from "ai"
-import { type GatewayModel } from "@/lib/models"
+import { type ChatModel } from "@/lib/models"
+import { RoutingChatTransport } from "@/lib/transports"
 import { type ChatUIMessage } from "@/tools"
 import { ChatMessage } from "@/components/chat-message"
 import { PromptForm } from "@/components/prompt-form"
@@ -26,19 +28,46 @@ import {
   MessageScrollerViewport,
 } from "@/components/ui/message-scroller"
 
-export function Chat({ models }: { models: GatewayModel[] }) {
+const noopSubscribe = () => () => {}
+const notSupportedOnServer = () => false
+
+/** Reads a browser capability without breaking hydration. */
+function useBrowserSupport(check: () => boolean) {
+  return React.useSyncExternalStore(noopSubscribe, check, notSupportedOnServer)
+}
+
+export function Chat({ models }: { models: ChatModel[] }) {
   const [model, setModel] = React.useState(models[0]?.id ?? "")
+
+  // On-device models need WebGPU. The server snapshot is `false` so the first
+  // client render matches the markup.
+  const supportsTransformers = useBrowserSupport(
+    doesBrowserSupportTransformersJS
+  )
+
+  const availableModels = React.useMemo(
+    () =>
+      models.filter(
+        (m) => m.provider !== "transformers-js" || supportsTransformers
+      ),
+    [models, supportsTransformers]
+  )
+
+  const resolvedModel = availableModels.some((m) => m.id === model)
+    ? model
+    : (availableModels[0]?.id ?? "")
+
+  // One transport for the whole chat; it dispatches per request based on the
+  // model id that every send already carries in its body.
+  const [transport] = React.useState(() => new RoutingChatTransport())
 
   const { messages, sendMessage, status, stop, error, addToolOutput } =
     useChat<ChatUIMessage>({
+      transport,
       // Resume the conversation automatically once the user has answered the
       // ask_user questionnaire.
       sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
     })
-
-  const resolvedModel = models.some((m) => m.id === model)
-    ? model
-    : (models[0]?.id ?? "")
 
   const isBusy = status === "submitted" || status === "streaming"
 
@@ -129,7 +158,7 @@ export function Chat({ models }: { models: GatewayModel[] }) {
           </Alert>
         )}
         <PromptForm
-          models={models}
+          models={availableModels}
           model={resolvedModel}
           onModelChange={setModel}
           isBusy={isBusy}

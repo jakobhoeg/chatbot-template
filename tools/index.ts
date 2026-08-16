@@ -1,4 +1,4 @@
-import { type InferUITools, type UIDataTypes, type UIMessage } from "ai"
+import { type InferUITools, type UIMessage } from "ai"
 
 import { askUser } from "./ask_user"
 import { githubRepo } from "./github_repo"
@@ -14,9 +14,23 @@ export function getTools(modelId: string) {
   return webSearch ? { ...baseTools, web_search: webSearch } : baseTools
 }
 
+// Tools that can run entirely in the browser (no server-side provider tools).
+export function getClientTools() {
+  return baseTools
+}
+
+export type ChatDataTypes = {
+  // Emitted by the on-device transports while a model is being downloaded.
+  modelDownloadProgress: {
+    status: "downloading" | "complete" | "error"
+    progress?: number
+    message: string
+  }
+}
+
 export type ChatUIMessage = UIMessage<
   unknown,
-  UIDataTypes,
+  ChatDataTypes,
   InferUITools<typeof baseTools> & {
     web_search: {
       input: { query?: string }
@@ -28,6 +42,11 @@ export type ChatUIMessage = UIMessage<
 export type ChatMessagePart = ChatUIMessage["parts"][number]
 
 export type TextMessagePart = Extract<ChatMessagePart, { type: "text" }>
+
+export type ReasoningMessagePart = Extract<
+  ChatMessagePart,
+  { type: "reasoning" }
+>
 
 export type SourceUrlPart = Extract<ChatMessagePart, { type: "source-url" }>
 
@@ -44,4 +63,9 @@ export type AskUserToolPart = Extract<
 export type WebSearchToolPart = Extract<
   ChatMessagePart,
   { type: "tool-web_search" }
+>
+
+export type ModelDownloadProgressPart = Extract<
+  ChatMessagePart,
+  { type: "data-modelDownloadProgress" }
 >
