@@ -70,6 +70,17 @@ The route already validates the request body, restricts models to [lib/models.ts
 - [app/api/chat/route.ts](app/api/chat/route.ts) streams responses with `streamText`
 - [components/chat.tsx](components/chat.tsx) renders the conversation with `useChat` and shadcn chat primitives.
 - [tools/](tools) defines the tools — one file per tool (the filename is the model-facing tool name), composed in [tools/index.ts](tools/index.ts): a server-executed GitHub repo lookup, the interactive `ask_user` questionnaire, and provider-native web search.
+- [lib/transports/](lib/transports) picks where inference runs. [index.ts](lib/transports/index.ts) routes each request by the model id in its body: gateway models go to `/api/chat`, on-device models stay in the browser.
+
+## On-device models
+
+`LFM2.5 2.6B (on-device)` runs open ONNX models on WebGPU via [@browser-ai/transformers-js](https://www.npmjs.com/package/@browser-ai/transformers-js). Every request stays in the browser, so no gateway credits are spent and `isModelAllowed()` rejects the model server-side. Weights are fetched from the Hugging Face Hub on first use (a few GB for this model) and cached by the browser, so the first message is slow and later ones are not. It is gated on `doesBrowserSupportTransformersJS()`, and streams `data-modelDownloadProgress` while weights load.
+
+The client-safe tools (`github_repo`, `ask_user`) are available on-device; provider-native web search is server-only.
+
+[lib/transports/transformers-js.ts](lib/transports/transformers-js.ts) loads the model in a Web Worker ([transformers-worker.ts](lib/transports/transformers-worker.ts)) so generation does not block rendering, and wraps it in `extractReasoningMiddleware({ tagName: "think" })` so `<think>` output becomes typed `reasoning` parts.
+
+Add a model by appending to `MODELS` with `provider: "transformers-js"` and a `transformers` config — `device`, `dtype`, `supportsWorker`, and, for reasoning models, `enableThinking` / `thinkingPrefilled` (set the latter when the chat template already emits the opening `<think>` tag). [RoutingChatTransport](lib/transports/index.ts) keeps one transport per model id so switching models does not discard a loaded model.
 
 ## Tool parts
 
@@ -82,6 +93,8 @@ Assistant messages are a list of typed parts. [components/chat-message.tsx](comp
 | `tool-web_search`  | [web-search-part.tsx](components/parts/web-search-part.tsx)       | A "Searching the web…" status while the search runs, then a persistent "Searched the web" line per search.                                     |
 | `tool-ask_user`    | [ask-user-part.tsx](components/parts/ask-user-part.tsx)           | The answered questions inline. Pending questions render in [question-card.tsx](components/question-card.tsx), pinned to the scroller bottom.   |
 | `source-url`       | [sources-part.tsx](components/parts/sources-part.tsx)             | Web search citations, deduped into a "Searched N websites" drawer once the message finishes streaming.                                         |
+| `data-modelDownloadProgress` | [model-download-part.tsx](components/parts/model-download-part.tsx) | On-device model download status and a progress bar.                                                                       |
+| `reasoning`        | [reasoning-part.tsx](components/parts/reasoning-part.tsx)         | A collapsible "Thought process" block, extracted from `<think>` output by on-device reasoning models.                     |
 
 Tool parts move through states as the stream progresses — `input-streaming` → `input-available` → `output-available` (or `output-error`) — and each component switches on `part.state` to show progress, results, and failures.
 

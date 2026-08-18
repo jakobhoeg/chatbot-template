@@ -3,6 +3,8 @@
 import { type ChatUIMessage } from "@/tools"
 import { AskUserPart } from "@/components/parts/ask-user-part"
 import { GithubRepoPart } from "@/components/parts/github-repo-part"
+import { ModelDownloadPart } from "@/components/parts/model-download-part"
+import { ReasoningPart } from "@/components/parts/reasoning-part"
 import { SourcesPart } from "@/components/parts/sources-part"
 import { TextPart } from "@/components/parts/text-part"
 import { WebSearchPart } from "@/components/parts/web-search-part"
@@ -40,12 +42,22 @@ export function ChatMessage({
           switch (part.type) {
             case "text":
               return <TextPart key={index} part={part} />
+            case "reasoning":
+              return (
+                <ReasoningPart
+                  key={index}
+                  part={part}
+                  isStreaming={isStreaming}
+                />
+              )
             case "tool-github_repo":
               return <GithubRepoPart key={part.toolCallId} part={part} />
             case "tool-ask_user":
               return <AskUserPart key={part.toolCallId} part={part} />
             case "tool-web_search":
               return <WebSearchPart key={part.toolCallId} part={part} />
+            case "data-modelDownloadProgress":
+              return <ModelDownloadPart key={part.id ?? index} part={part} />
             default:
               return null
           }
